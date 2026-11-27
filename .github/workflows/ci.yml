@@ -34,7 +34,7 @@ jobs:
           fail_ci_if_error: false # エラーが発生した場合の処理
 
   backend: # backendのテストを行う
-    runs-on: ubuntu-latest # 一時的なLinux環境(ubuntu)をインストールする
+    runs-on: ubuntu-24.04 # Ruby 3.3.10の配布バイナリがあるUbuntuに固定する
     defaults:
       run:
         working-directory: backend # ディレクトリの指定、backendディレクトリでテストを行う
