@@ -1,6 +1,7 @@
 // src/app/components/RoomsList.tsx
 "use client";
 
+import type { Room } from "@/types/room";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -19,17 +20,6 @@ const formatJST = (iso: string) =>
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
-
-type Room = {
-  id: number;
-  title: string;
-  user_id: number;
-  created_at: string;
-  user: {
-    id: number;
-    name: string;
-  };
-};
 
 type Props = {
   rooms: Room[];
@@ -60,7 +50,7 @@ const RoomsList = ({ rooms, onLoginClick }: Props) => {
   const sleep = (ms: number) =>
     new Promise((resolve) => setTimeout(resolve, ms));
 
-  const handleRoomClick = () => (e: MouseEvent<HTMLAnchorElement>) => {
+  const handleRoomClick = (e: MouseEvent<HTMLAnchorElement>) => {
     if (status !== "authenticated") {
       e.preventDefault();
       toast.error("投稿するにはログインが必要です");
@@ -118,7 +108,10 @@ const RoomsList = ({ rooms, onLoginClick }: Props) => {
           <Link
             key={room.id}
             href={`/rooms/${room.id}`}
-            onClick={handleRoomClick()}
+            onClick={handleRoomClick}
+            onAuxClick={(event) => {
+              if (event.button === 1) handleRoomClick(event);
+            }}
             className="!cursor-pointer"
           >
             <div className="rounded-2xl bg-white shadow-sm border border-slate-300 mb-3 hover:bg-slate-50 overflow-hidden flex items-stretch ">

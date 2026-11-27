@@ -2,10 +2,7 @@
 
 # app/controllers/api/users_controller.rb
 module Api
-  class UsersController < ApplicationController
-    protect_from_forgery with: :null_session
-    before_action :verify_bff_token!
-
+  class UsersController < BffController
     def update
       Rails.logger.debug "[Users#update] params = #{params.inspect}"
       user = User.find_by(id: params[:id])
@@ -88,13 +85,6 @@ module Api
 
     def user_params
       params.permit(:name, :email) # ← これが user_params
-    end
-
-    def verify_bff_token!
-      expected = ENV['BFF_SHARED_TOKEN'].to_s
-      provided = request.headers['X-BFF-Token'].to_s
-      head :unauthorized unless expected.present? &&
-                                ActiveSupport::SecurityUtils.secure_compare(expected, provided)
     end
   end
 end

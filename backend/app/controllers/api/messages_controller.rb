@@ -3,20 +3,15 @@
 # app/controllers/api/messages_controller.rb
 
 module Api
-  class MessagesController < ApplicationController
-    protect_from_forgery with: :null_session
-    before_action :verify_bff_token!
-
+  class MessagesController < BffController
     before_action :set_room, only: %i[index create show update destroy]
     before_action :set_message, only: %i[show update destroy]
+    before_action :authorize_message_owner!, only: %i[update destroy]
 
     def index
       messages = @room.messages.includes(:user).order(created_at: :asc)
 
-      render json: messages.as_json(
-        only: %i[id body room_id user_id created_at edited_at],
-        include: { user: { only: %i[id name] } }
-      )
+      render json: message_json(messages)
     end
 
     def create
@@ -29,66 +24,37 @@ module Api
       message = @room.messages.build(body: body, user: user)
 
       if message.save
-        render json: message.as_json(
-          only: %i[id body room_id user_id created_at edited_at],
-          include: { user: { only: %i[id name] } }
-        ), status: :created
+        render json: message_json(message), status: :created
       else
         render json: { errors: message.errors.full_messages }, status: :unprocessable_entity
       end
     end
 
     def show
-      render json: @message.as_json(
-        only: %i[id body room_id user_id created_at edited_at],
-        include: { user: { only: %i[id name] } }
-      )
+      render json: message_json(@message)
     end
 
     def update
-      user = User.find_by(id: request.headers['X-User-Id'])
-      return render json: { error: 'unauthorized' }, status: :unauthorized unless user
-
-      room = Room.find_by(id: params[:room_id])
-      return render json: { error: 'not_found' }, status: :not_found unless room
-
-      message = room.messages.find_by(id: params[:id])
-      return render json: { error: 'not_found' }, status: :not_found unless message
-      return render json: { error: 'forbidden' }, status: :forbidden unless message.user_id == user.id
-
       body = params[:body].to_s.strip
-      return render json: { error: 'missing_body' }, status: :bad_request if body.strip.empty?
+      return render json: { error: 'missing_body' }, status: :bad_request if body.empty?
 
-      return render json: { error: 'edit_window_expired' }, status: :forbidden if message.created_at < 1.hour.ago
+      return render json: { error: 'edit_window_expired' }, status: :forbidden unless @message.editable_by?(@requester)
 
       # params[:body] は「送られてきた本文」
       # .to_s は数値を文字列化するためだが、このニュアンスは nil ガード（nil の場合は空文字列に変換）
 
-      if message.update(body: body, edited_at: Time.current)
-        render json: message.as_json(
-          only: %i[id body room_id user_id created_at edited_at],
-          include: { user: { only: %i[id name] } }
-        )
+      if @message.update(body: body, edited_at: Time.current)
+        render json: message_json(@message)
       else
-        render json: { errors: message.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @message.errors.full_messages }, status: :unprocessable_entity
       end
     end
 
     def destroy
-      user = User.find_by(id: request.headers['X-User-Id'])
-      return render json: { error: 'unauthorized' }, status: :unauthorized unless user
-
-      room = Room.find_by(id: params[:room_id])
-      return render json: { error: 'not_found' }, status: :not_found unless room
-
-      message = room.messages.find_by(id: params[:id])
-      return render json: { error: 'not_found' }, status: :not_found unless message
-      return render json: { error: 'forbidden' }, status: :forbidden unless message.user_id == user.id
-
-      if message.destroy
+      if @message.destroy
         head :no_content
       else
-        render json: { errors: message.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: @message.errors.full_messages }, status: :unprocessable_entity
       end
     end
 
@@ -108,10 +74,19 @@ module Api
       render json: { error: 'message_not_found' }, status: :not_found
     end
 
-    def verify_bff_token!
-      expected = ENV['BFF_SHARED_TOKEN'].to_s
-      provided = request.headers['X-BFF-Token'].to_s
-      head :unauthorized unless expected.present? && ActiveSupport::SecurityUtils.secure_compare(expected, provided)
+    def authorize_message_owner!
+      @requester = User.find_by(id: request.headers['X-User-Id'])
+      return render json: { error: 'unauthorized' }, status: :unauthorized unless @requester
+      return if @message.user_id == @requester.id
+
+      render json: { error: 'forbidden' }, status: :forbidden
+    end
+
+    def message_json(message_or_collection)
+      message_or_collection.as_json(
+        only: %i[id body room_id user_id created_at edited_at],
+        include: { user: { only: %i[id name] } }
+      )
     end
   end
 end

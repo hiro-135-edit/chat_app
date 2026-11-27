@@ -3,10 +3,7 @@
 # app/controllers/api/auth/upserts_controller.rb
 module Api
   module Auth
-    class UpsertsController < ApplicationController
-      protect_from_forgery with: :null_session
-      before_action :verify_bff_token!
-
+    class UpsertsController < Api::BffController
       def create
         raw = params[:upsert].presence || params
         # ↑upsertで包まれてるverとparamsで直でくるverの両対応
@@ -50,14 +47,6 @@ module Api
         render json: { error: 'validation_error', details: e.record.errors.full_messages },
                status: :unprocessable_entity
         # ↑エラー時の処理
-      end
-
-      private
-
-      def verify_bff_token!
-        expected = ENV['BFF_SHARED_TOKEN'].to_s
-        provided = request.headers['X-BFF-Token'].to_s
-        head :unauthorized unless expected.present? && ActiveSupport::SecurityUtils.secure_compare(expected, provided)
       end
     end
   end

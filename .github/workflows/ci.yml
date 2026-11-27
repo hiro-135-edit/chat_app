@@ -5,48 +5,51 @@ on:
   pull_request:
 
 jobs:
-  frontend:
-    runs-on: ubuntu-latest
+  frontend: # frontendのテストを行う
+    runs-on: ubuntu-latest # 一時的なLinux環境(ubuntu)をインストールする
     defaults:
       run:
-        working-directory: frontend
+        working-directory: frontend # ディレクトリの指定、frontendディレクトリでテストを行う
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5 # GitHubリポジトリのコードをCI環境にコピーする
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6 # ubuntu環境にNode.jsをインストールする
         with:
-          node-version: "24"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          node-version: "24" # Node.jsのバージョンを指定する
+          cache: "npm" # npmのキャッシュを使用、高速化させる
+          cache-dependency-path: frontend/package-lock.json # package-lock.json を基準にキャッシュ管理
 
-      - run: npm ci
-      - run: npm test -- --coverage --coverageReporters=lcov
+      - run: npm ci # npmのインストールを行う
+      - run: npm run test:coverage -- --ci # 全件を直列実行し、行80%・分岐70%以上を検証する
 
-      - name: Upload frontend coverage to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Upload frontend coverage to Codecov # GitHub Actions上で表示されるステップ名
+        if: ${{ !cancelled() && hashFiles('frontend/coverage/lcov.info') != '' }} # テスト失敗時も生成済みレポートを送信する
+        uses: codecov/codecov-action@v5 # Actionがlcov.info を読み取ってCodecovへ送信
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }} # Codecovのトークンを環境変数に設定する
         with:
-          files: ./frontend/coverage/lcov.info
-          flags: frontend
-          fail_ci_if_error: true
+          files: ./frontend/coverage/lcov.info # アップロードするカバレッジファイルを指定する
+          disable_search: true # 指定した最新レポートだけを送信する
+          flags: frontend # Codecov上で分類するためのラベル
+          fail_ci_if_error: false # エラーが発生した場合の処理
 
-  backend:
-    runs-on: ubuntu-latest
+  backend: # backendのテストを行う
+    runs-on: ubuntu-latest # 一時的なLinux環境(ubuntu)をインストールする
     defaults:
       run:
-        working-directory: backend
+        working-directory: backend # ディレクトリの指定、backendディレクトリでテストを行う
 
     services:
-      postgres:
-        image: postgres:15
+      postgres: # postgresを使用する
+        image: postgres:15 # postgresのイメージを使用する
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: chatapp_test
-          PGUSER: postgres
+          POSTGRES_USER: postgres # postgresのユーザー名を環境変数に設定する
+          POSTGRES_PASSWORD: postgres # postgresのパスワードを環境変数に設定する
+          POSTGRES_DB: chatapp_test # postgresのデータベース名を環境変数に設定する
+          PGUSER: postgres # postgresのユーザー名を環境変数に設定する
         ports:
-          - "5432:5432"
+          - "5432:5432" # postgresのポートを開放する
+        # pg_isreadyで起動を確認する。間隔10秒、タイムアウト5秒、リトライ5回。
         options: >-
           --health-cmd=pg_isready
           --health-interval=10s
@@ -54,28 +57,30 @@ jobs:
           --health-retries=5
 
     env:
-      RAILS_ENV: test
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/chatapp_test
-      BFF_SHARED_TOKEN: test-bff-token
-      SECRET_KEY_BASE: test
+      RAILS_ENV: test # Railsの環境をtestに設定する
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/chatapp_test # postgresのURLを環境変数に設定する
+      BFF_SHARED_TOKEN: test-bff-token # BFFのトークンを環境変数に設定する
+      SECRET_KEY_BASE: test # シークレットキーを環境変数に設定する
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5 # GitHubリポジトリのコードをCI環境にコピーする
 
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@v1 # ubuntu環境にRubyをインストールする
         with:
-          ruby-version: "3.3.10"
-          bundler-cache: true
-          working-directory: backend
+          ruby-version: "3.3.10" # Rubyのバージョンを指定する
+          bundler-cache: true # bundlerのキャッシュを使用する
+          working-directory: backend # ディレクトリの指定、backendディレクトリでテストを行う
 
-      - run: bundle exec rails db:prepare
-      - run: bundle exec rspec
+      - run: bundle exec rails db:prepare # データベースを準備する
+      - run: bundle exec rspec # 行80%以上を検証し、行・分岐を単一のcoverage/lcov.infoに出力する
 
-      - name: Upload backend coverage to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Upload backend coverage to Codecov # GitHub Actions上で表示されるステップ名
+        if: ${{ !cancelled() && hashFiles('backend/coverage/lcov.info') != '' }} # テスト失敗時も生成済みレポートを送信する
+        uses: codecov/codecov-action@v5 # Actionがlcov.info を読み取ってCodecovへ送信
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }} # Codecovのトークンを環境変数に設定する
         with:
-          files: ./backend/coverage/lcov.info
-          flags: backend
-          fail_ci_if_error: true
+          files: ./backend/coverage/lcov.info # アップロードするカバレッジファイルを指定する
+          disable_search: true # 保存済みの古い分割レポートの混入を防ぐ
+          flags: backend # Codecov上で分類するためのラベル
+          fail_ci_if_error: false # エラーが発生した場合の処理

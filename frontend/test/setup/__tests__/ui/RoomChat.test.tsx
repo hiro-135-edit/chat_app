@@ -1,156 +1,252 @@
-// test/setup/__tests__/ui/RoomChat.test.tsx
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import RoomChat from "@/app/components/RoomChat";
 import { renderWithProviders } from "../../../render";
 import { useSession } from "next-auth/react";
+import { toast } from "@/lib/toastPopup";
 
-const makeJsonResponse = (data: unknown, status = 200) => {
-  const body = JSON.stringify(data);
+const mockRefresh = jest.fn();
 
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    text: async () => body,
-    json: async () => (body ? JSON.parse(body) : null),
-    headers: {
-      get: (key: string) =>
-        key.toLowerCase() === "content-type" ? "application/json" : null,
-    },
-  };
-};
-
-jest.mock("next-auth/react", () => {
-  const actual = jest.requireActual("next-auth/react");
-  return {
-    ...actual,
-    useSession: jest.fn(),
-  };
-});
-
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    refresh: jest.fn(),
-    back: jest.fn(),
-    forward: jest.fn(),
-    prefetch: jest.fn(),
-  }),
-  usePathname: () => "/rooms/1",
-  useSearchParams: () => new URLSearchParams(),
+jest.mock("next-auth/react", () => ({
+  ...jest.requireActual("next-auth/react"),
+  useSession: jest.fn(),
 }));
 
-const useSessionMock = useSession as unknown as jest.Mock;
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: mockRefresh }),
+}));
+
+jest.mock("@/lib/toastPopup", () => ({
+  toast: { success: jest.fn(), error: jest.fn() },
+}));
+
+const makeJsonResponse = (data: unknown, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  text: async () => JSON.stringify(data),
+  json: async () => data,
+  headers: {
+    get: (key: string) =>
+      key.toLowerCase() === "content-type" ? "application/json" : null,
+  },
+});
+
+const originalMessage = {
+  id: 10,
+  body: "hello",
+  room_id: 1,
+  user_id: 1,
+  created_at: "2026-01-18T00:00:00.000Z",
+  edited_at: null as string | null,
+  user: { id: 1, name: "TestUser" },
+};
+
+const renderChat = () =>
+  renderWithProviders(
+    <RoomChat
+      roomId={1}
+      roomTitle="Test room"
+      roomTime="2026-01-18T00:00:00.000Z"
+      userName="TestUser"
+    />,
+  );
+
+const useSessionMock = useSession as jest.Mock;
+let fetchMock: jest.Mock;
 
 describe("RoomChat", () => {
   beforeEach(() => {
+    jest.clearAllMocks();
+    sessionStorage.clear();
     useSessionMock.mockReturnValue({
       data: {
-        userId: 1,
-        user: { id: "1", name: "TestUser", email: "test@example.com" },
-        expires: new Date(Date.now() + 60_000).toISOString(),
+        userId: "1",
+        user: { name: "TestUser", email: "test@example.com" },
       },
       status: "authenticated",
     });
 
-    const messages = [
-      {
-        id: 10,
-        body: "hello",
-        room_id: 1,
-        user_id: 1,
-        created_at: new Date().toISOString(),
-        user: { id: 1, name: "TestUser" },
-      },
-    ];
+    let messages = [{ ...originalMessage }];
+    fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
 
-    const created = {
-      id: 11,
-      body: "new message",
-      room_id: 1,
-      user_id: 1,
-      created_at: new Date().toISOString(),
-      user: { id: 1, name: "TestUser" },
-    };
-
-    const fetchMock = jest.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        const method = (init?.method ?? "GET").toUpperCase();
-
-        // 初回ロード: メッセージ一覧
-        if (method === "GET" && url.includes("/api/bff/messages")) {
-          return makeJsonResponse(messages, 200);
-        }
-
-        if (method === "POST" && url.includes("/api/bff/messages")) {
-          messages.push(created);
-          return makeJsonResponse(created, 201);
-        }
-
-        // 送信: 作成
-        if (method === "POST" && url.includes("/api/bff/messages")) {
-          // 送信後に UI が再取得する可能性があるので、次回 GET を新しい一覧にしておく
-          messages.push(created);
-          return makeJsonResponse(created, 201);
-        }
-
-        return makeJsonResponse({ error: 'unexpected_fetch' }, 500)
-      },
-    );
-
-    global.fetch = fetchMock as unknown as typeof fetch;
-  });
-
-  it("loads and renders messages", async () => {
-    renderWithProviders(
-      <RoomChat
-        roomId={1}
-        roomTitle={"bbhbbh"}
-        roomTime={"2026-01-18T00:00:00.000Z"}
-        userName={"jjjj"}
-      />,
-    );
-
-    expect(await screen.findByText("hello")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalled();
+      if (method === "GET" && url === "/api/bff/messages?roomId=1") {
+        return makeJsonResponse(messages);
+      }
+      if (method === "POST" && url === "/api/bff/messages?roomId=1") {
+        const { body } = JSON.parse(String(init?.body));
+        const created = { ...originalMessage, id: 11, body };
+        messages = [...messages, created];
+        return makeJsonResponse(created, 201);
+      }
+      if (method === "PATCH" && url === "/api/bff/messages/10?roomId=1") {
+        const { body } = JSON.parse(String(init?.body));
+        const updated = {
+          ...originalMessage,
+          body,
+          edited_at: "2026-01-18T00:30:00.000Z",
+        };
+        messages = [updated];
+        return makeJsonResponse(updated);
+      }
+      if (method === "DELETE" && url === "/api/bff/messages/10?roomId=1") {
+        messages = [];
+        return makeJsonResponse(null, 204);
+      }
+      return makeJsonResponse({ error: "unexpected_fetch" }, 500);
     });
+    global.fetch = fetchMock as typeof fetch;
   });
 
-  it("posts a message", async () => {
+  it("loads messages and recognizes numeric user IDs against the string session ID", async () => {
     const user = userEvent.setup();
-    renderWithProviders(
-      <RoomChat
-        roomId={1}
-        roomTitle={"あああ"}
-        roomTime={"2026-01-18T00:00:00.000Z"}
-        userName={"aaaa"}
-      />,
+    renderChat();
+
+    await user.click(await screen.findByText("hello"));
+
+    expect(screen.getByRole("button", { name: "編集" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/bff/messages?roomId=1", {
+      cache: "no-store",
+    });
+  });
+
+  it("does not load messages before authentication", () => {
+    useSessionMock.mockReturnValue({ data: null, status: "unauthenticated" });
+    renderChat();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not offer editing for another user's message", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      makeJsonResponse([{ ...originalMessage, user_id: 2 }]),
+    );
+    renderChat();
+
+    await user.click(await screen.findByText("hello"));
+
+    expect(screen.queryByRole("button", { name: "編集" })).not.toBeInTheDocument();
+  });
+
+  it("posts trimmed text, reloads messages, and clears the input", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await screen.findByText("hello");
+
+    await user.type(screen.getByRole("textbox"), "  new message  ");
+    await user.click(screen.getByRole("button", { name: "送信" }));
+
+    expect(await screen.findByText("new message")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/bff/messages?roomId=1",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ roomId: 1, body: "new message" }),
+      }),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("送信しました"));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  it("keeps the draft after a rejected post and displays validation errors", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await screen.findByText("hello");
+    fetchMock.mockResolvedValueOnce(
+      makeJsonResponse({ errors: ["first error", "second error"] }, 422),
     );
 
-    // 入力（textarea / input のどちらでも role は textbox になる想定）
-    const textbox = await screen.findByRole("textbox");
-    await user.type(textbox, "new message");
+    await user.type(screen.getByRole("textbox"), "draft");
+    await user.click(screen.getByRole("button", { name: "送信" }));
 
-    // ボタン名が違う場合はここだけ調整してください（例: '送信' / '投稿'）
-    const sendButton =
-      screen.queryByRole("button", { name: /send|送信|投稿/i }) ??
-      screen.getAllByRole("button")[0];
+    expect(toast.error).toHaveBeenCalledWith("first error\nsecond error");
+    expect(screen.getByRole("textbox")).toHaveValue("draft");
+    expect(screen.getByRole("button", { name: "送信" })).toBeEnabled();
+    expect(screen.queryByText("draft")).not.toBeInTheDocument();
+  });
 
-    await user.click(sendButton);
+  it("updates a message and leaves edit mode after saving", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(await screen.findByText("hello"));
+    await user.click(screen.getByRole("button", { name: "編集" }));
+    await user.clear(screen.getByRole("textbox"));
+    await user.type(screen.getByRole("textbox"), "  edited message  ");
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
-    await waitFor(() => {
-      // POST が飛んでいること（URL は roomId を query で持つ実装が多い）
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringMatching(/\/api\/bff\/messages/),
-        expect.objectContaining({ method: "POST" }),
-      );
+    expect(await screen.findByText("edited message")).toBeInTheDocument();
+    expect(screen.getByText("(編集済)")).toBeInTheDocument();
+    expect(screen.queryByText("編集中です")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/bff/messages/10?roomId=1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ body: "edited message" }),
+      }),
+    );
+    expect(toast.success).toHaveBeenCalledWith("編集しました");
+  });
+
+  it("exits edit mode without a request when the message has not changed", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(await screen.findByText("hello"));
+    await user.click(screen.getByRole("button", { name: "編集" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("編集中です")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  it("preserves the message and draft when the edit window has expired", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(await screen.findByText("hello"));
+    await user.click(screen.getByRole("button", { name: "編集" }));
+    await user.clear(screen.getByRole("textbox"));
+    await user.type(screen.getByRole("textbox"), "edited message");
+    fetchMock.mockResolvedValueOnce(
+      makeJsonResponse({ error: "edit_window_expired" }, 403),
+    );
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(screen.getByText("hello")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("edited message");
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "このメッセージは送信から1時間を超えたため編集できません。",
+    );
+  });
+
+  it("removes a message after a successful delete and refreshes the route", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(await screen.findByText("hello"));
+    await user.click(screen.getByRole("button", { name: "削除" }));
+
+    await waitFor(() => expect(screen.queryByText("hello")).not.toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith("/api/bff/messages/10?roomId=1", {
+      method: "DELETE",
+      cache: "no-store",
     });
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith("削除に成功しました");
+  });
 
-    // 画面に反映されること（append でも再取得でもOK）
-    expect(await screen.findByText("new message")).toBeInTheDocument();
+  it("keeps a message when deletion fails", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(await screen.findByText("hello"));
+    fetchMock.mockResolvedValueOnce(makeJsonResponse({ error: "forbidden" }, 403));
+    await user.click(screen.getByRole("button", { name: "削除" }));
+
+    expect(screen.getByText("hello")).toBeInTheDocument();
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("forbidden");
   });
 });

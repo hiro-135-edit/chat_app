@@ -2,28 +2,15 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextauth/auth";
-
-const api = process.env.BACKEND_API_URL!;
-const BFF_SHARED_TOKEN = process.env.BFF_SHARED_TOKEN!;
+import { backendJsonResponse, fetchBackend } from "@/lib/bff/backend";
 
 // ルーム一覧取得（ホーム画面用）
 export async function GET() {
-  const railsRes = await fetch(`${api}/api/rooms`, {
-    headers: {
-      "X-BFF-Token": BFF_SHARED_TOKEN,
-    },
+  const railsRes = await fetchBackend("/api/rooms", {
     cache: "no-store",
   });
 
-  const json = await railsRes.json().catch(() => null);
-
-  if (!railsRes.ok) {
-    return NextResponse.json(json ?? { error: "rails_error" }, {
-      status: railsRes.status,
-    });
-  }
-
-  return NextResponse.json(json, { status: 200 });
+  return backendJsonResponse(railsRes, { successStatus: 200 });
 }
 
 // ルーム作成（投稿モーダルからのPOST）
@@ -44,11 +31,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "missing_title" }, { status: 400 });
   }
 
-  const railsRes = await fetch(`${api}/api/rooms`, {
+  const railsRes = await fetchBackend("/api/rooms", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-BFF-Token": BFF_SHARED_TOKEN,
     },
     body: JSON.stringify({
       title: body.title,
@@ -56,13 +42,5 @@ export async function POST(req: Request) {
     }),
   });
 
-  const json = await railsRes.json().catch(() => null);
-
-  if (!railsRes.ok) {
-    return NextResponse.json(json ?? { error: "rails_error" }, {
-      status: railsRes.status,
-    });
-  }
-
-  return NextResponse.json(json, { status: 201 });
+  return backendJsonResponse(railsRes, { successStatus: 201 });
 }

@@ -3,21 +3,10 @@
 # app/controllers/api/rooms_controller.rb
 
 module Api
-  class RoomsController < ApplicationController
-    protect_from_forgery with: :null_session
-    before_action :verify_bff_token!
-
+  class RoomsController < BffController
     def index
       rooms = Room.includes(:user).order(created_at: :desc)
-      render json: rooms.as_json(
-        only: %i[id title user_id created_at],
-        methods: %i[created_at_text],
-        include: {
-          user: {
-            only: %i[id name]
-          }
-        }
-      )
+      render json: room_json(rooms)
     end
 
     def create
@@ -42,15 +31,7 @@ module Api
       room = Room.includes(:user).find_by(id: params[:id])
       return render json: { error: 'not_found' }, status: :not_found unless room
 
-      render json: room.as_json(
-        only: %i[id title user_id created_at],
-        methods: %i[created_at_text],
-        include: {
-          user: {
-            only: %i[id name]
-          }
-        }
-      )
+      render json: room_json(room)
     end
 
     def destroy
@@ -61,7 +42,7 @@ module Api
       # Room.find(params[:id])とRoom.find_by(id: params[:id])の違いは例外時の挙動、前者はその時点で例外が発生、後者はnilを返す
 
       requester_id = request.headers['X-User-Id'].to_i
-      return render json: { error: 'missing_user_id' }, status: :unauthorized if requester_id <= 0 || requester_id.nil?
+      return render json: { error: 'missing_user_id' }, status: :unauthorized if requester_id <= 0
 
       if room.user_id != requester_id
         render json: { error: 'forbidden' }, status: :forbidden
@@ -74,11 +55,12 @@ module Api
 
     private
 
-    def verify_bff_token!
-      expected = ENV['BFF_SHARED_TOKEN'].to_s
-      provided = request.headers['X-BFF-Token'].to_s
-      head :unauthorized unless expected.present? &&
-                                ActiveSupport::SecurityUtils.secure_compare(expected, provided)
+    def room_json(room_or_collection)
+      room_or_collection.as_json(
+        only: %i[id title user_id created_at],
+        methods: %i[created_at_text],
+        include: { user: { only: %i[id name] } }
+      )
     end
   end
 end

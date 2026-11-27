@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-
-const api = process.env.BACKEND_API_URL!;
-const BFF_SHARED_TOKEN = process.env.BFF_SHARED_TOKEN!;
+import { backendJsonResponse, fetchBackend } from "@/lib/bff/backend";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -10,14 +8,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "missing_token" }, { status: 400 });
   }
 
-  const railsRes = await fetch(
-    `${api}/api/confirm?token=${encodeURIComponent(token)}`,
+  const railsRes = await fetchBackend(
+    `/api/confirm?token=${encodeURIComponent(token)}`,
     {
-      headers: { "X-BFF-Token": BFF_SHARED_TOKEN },
       cache: "no-store",
     }
   );
 
-  const json = await railsRes.json().catch(() => null);
-  return NextResponse.json(json ?? { error: "rails_error" }, { status: railsRes.status });
+  return backendJsonResponse(railsRes, {
+    successFallback: { error: "rails_error" },
+  });
 }

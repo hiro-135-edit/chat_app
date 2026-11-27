@@ -15,6 +15,11 @@ module.exports = async () => {
 
   return {
     ...nextConfig,
+    collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts'],
+    coverageReporters: ['text', 'json-summary', 'lcov'],
+    coverageThreshold: {
+      global: { lines: 80, branches: 70 },
+    },
     projects: [
       {
         ...nextConfig,

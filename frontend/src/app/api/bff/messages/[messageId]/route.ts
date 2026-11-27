@@ -2,9 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextauth/auth";
-
-const api = process.env.BACKEND_API_URL!;
-const BFF_SHARED_TOKEN = process.env.BFF_SHARED_TOKEN!;
+import { backendJsonResponse, fetchBackend } from "@/lib/bff/backend";
 
 type Params = Promise<{ messageId: string }>
 
@@ -26,13 +24,12 @@ export async function PATCH(
   if (!body?.body)
     return NextResponse.json({ error: "missing_body" }, { status: 400 });
 
-  const railsRes = await fetch(
-    `${api}/api/rooms/${roomId}/messages/${messageId}`,
+  const railsRes = await fetchBackend(
+    `/api/rooms/${roomId}/messages/${messageId}`,
     {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "X-BFF-Token": BFF_SHARED_TOKEN,
         "X-User-Id": String(userId),
       },
       body: JSON.stringify({
@@ -42,9 +39,8 @@ export async function PATCH(
     },
   );
 
-  const json = await railsRes.json().catch(() => null);
-  return NextResponse.json(json ?? { error: "rails_error" }, {
-    status: railsRes.status,
+  return backendJsonResponse(railsRes, {
+    successFallback: { error: "rails_error" },
   });
 }
 
@@ -62,29 +58,20 @@ export async function DELETE(
   if (!userId)
     return NextResponse.json({ error: "no_user_id" }, { status: 400 });
 
-  const railsRes = await fetch(
-    `${api}/api/rooms/${roomId}/messages/${messageId}`,
+  const railsRes = await fetchBackend(
+    `/api/rooms/${roomId}/messages/${messageId}`,
     {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
-        "X-BFF-Token": BFF_SHARED_TOKEN,
         "X-User-Id": String(userId),
       },
       cache: "no-store",
     },
   );
 
-  const json = await railsRes.json().catch(() => null);
-
-  if (!railsRes.ok) {
-    return NextResponse.json(json ?? { error: "rails_error" }, {
-      status: railsRes.status,
-    });
-  }
-
-  // ここでいるparamsはアクセスしたroom、そのidを取得している
-  // Railsのrequest.headers['X-User-Id']はTSのX-User-Idのこと
-
-  return NextResponse.json(json ?? { ok: true }, { status: 200 });
+  return backendJsonResponse(railsRes, {
+    successStatus: 200,
+    successFallback: { ok: true },
+  });
 }

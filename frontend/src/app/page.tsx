@@ -1,19 +1,9 @@
 // src/app/page.tsx
+import type { Room } from "@/types/room";
 import "./globals.css";
 import "@mantine/core/styles.css";
 import RoomsList from "./components/RoomsList";
 import { cookies } from "next/headers";
-
-type Room = {
-  id: number;
-  title: string;
-  user_id: number;
-  created_at: string;
-  user: {
-    id: number;
-    name: string;
-  };
-};
 
 const fetchRooms = async (): Promise<Room[]> => {
   const res = await fetch(`${process.env.NEXTAUTH_URL}/api/bff/rooms`, {

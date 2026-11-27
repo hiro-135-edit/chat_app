@@ -1,88 +1,27 @@
-// /src/app/api/bff/rooms/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/nextauth/auth";
+import { backendJsonResponse, fetchBackend } from "@/lib/bff/backend";
 
-const api = process.env.BACKEND_API_URL!;
-const BFF_SHARED_TOKEN = process.env.BFF_SHARED_TOKEN!;
+// 既存の作成用エンドポイントを維持し、処理は一覧ルートと共有する。
+export { POST } from "../route";
 
-type Params = Promise<{ roomId: string }>
+type Params = Promise<{ roomId: string }>;
 
-// ルーム一覧取得（ホーム画面用）
 export async function GET(
   req: NextRequest,
   { params }: { params: Params },
 ) {
+  const session = await getServerSession(authOptions);
+  if (!session?.userId)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const { roomId } = await params;
-  const railsRes = await fetch(`${api}/api/rooms/${roomId}`, {
-    headers: {
-      "X-BFF-Token": BFF_SHARED_TOKEN,
-    },
+  const railsRes = await fetchBackend(`/api/rooms/${roomId}`, {
     cache: "no-store",
   });
 
-  // railsRes.status … HTTPステータスコード（200, 400, 500 など）
-  // railsRes.ok … status が 200〜299 なら true
-  // railsRes.headers … Content-Type などのレスポンスヘッダ
-  // railsRes.body … 生のレスポンスボディ（ストリーム）
-  // railsRes.json() … その body を JSON として読む関数
-  //上の時点でrailsと通信、その結果をrailsResに格納、下のコードに進む
-
-  const json = await railsRes.json().catch(() => null);
-
-  // tryはそのまま結果を格納、catch 文でjsonのパースに失敗した場合に備える
-
-  if (!railsRes.ok) {
-    return NextResponse.json(json ?? { error: "rails_error" }, {
-      status: railsRes.status,
-    });
-  }
-
-  return NextResponse.json(json, { status: 200 });
-}
-
-// ルーム作成（投稿モーダルからのPOST）
-export async function POST(
-  req: NextRequest,
-) {
-
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  // jwt/session に userId を入れている想定
-  const userId = session.userId;
-  if (!userId) {
-    return NextResponse.json({ error: "no_user_id" }, { status: 400 });
-  }
-
-  const body = await req.json().catch(() => null);
-  if (!body || !body.title) {
-    return NextResponse.json({ error: "missing_title" }, { status: 400 });
-  }
-
-  const railsRes = await fetch(`${api}/api/rooms`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-BFF-Token": BFF_SHARED_TOKEN,
-    },
-    body: JSON.stringify({
-      title: body.title,
-      user_id: userId,
-    }),
-  });
-
-  const json = await railsRes.json().catch(() => null);
-
-  if (!railsRes.ok) {
-    return NextResponse.json(json ?? { error: "rails_error" }, {
-      status: railsRes.status,
-    });
-  }
-
-  return NextResponse.json(json, { status: 201 });
+  return backendJsonResponse(railsRes, { successStatus: 200 });
 }
 
 export async function DELETE(
@@ -98,25 +37,16 @@ export async function DELETE(
   if (!userId)
     return NextResponse.json({ error: "no_user_id" }, { status: 400 });
 
-  const railsRes = await fetch(`${api}/api/rooms/${roomId}`, {
+  const railsRes = await fetchBackend(`/api/rooms/${roomId}`, {
     method: "DELETE",
     headers: {
-      "X-BFF-Token": BFF_SHARED_TOKEN,
       "X-User-Id": String(userId),
     },
     cache: "no-store",
   });
 
-  const json = await railsRes.json().catch(() => null);
-
-  if (!railsRes.ok) {
-    return NextResponse.json(json ?? { error: "rails_error" }, {
-      status: railsRes.status,
-    });
-  }
-
-  // ここでいるparamsはアクセスしたroom、そのidを取得している
-  // Railsのrequest.headers['X-User-Id']はTSのX-User-Idのこと
-
-  return NextResponse.json(json ?? { ok: true }, { status: 200 });
+  return backendJsonResponse(railsRes, {
+    successStatus: 200,
+    successFallback: { ok: true },
+  });
 }

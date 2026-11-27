@@ -2,9 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/nextauth/auth';
-
-const api = process.env.BACKEND_API_URL!;
-const BFF_SHARED_TOKEN = process.env.BFF_SHARED_TOKEN!;
+import { fetchBackend } from '@/lib/bff/backend';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -47,11 +45,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const railsResponse = await fetch(`${api}/api/user/password`, {
+    const railsResponse = await fetchBackend('/api/user/password', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'X-BFF-Token': BFF_SHARED_TOKEN,
       },
       cache: 'no-store',
       body: JSON.stringify({

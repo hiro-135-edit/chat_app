@@ -13,7 +13,6 @@ declare module "next-auth" {
     railsAccess?: string;
     railsAccessExp?: string;
     railsRefresh?: string;
-    railsAccessExp?: string;
   }
 }
 
